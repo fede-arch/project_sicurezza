@@ -1,0 +1,70 @@
+services:
+  # Database PostgreSQL vulnerabile
+  db:
+    image: postgres:12
+    container_name: vulnerable_db
+    environment:
+      POSTGRES_DB: vulnerable_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - sqli_network
+    command: postgres -c log_statement=all -c log_destination=stderr
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d vulnerable_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Web server con PHP vulnerabile
+  web:
+    build: ./web
+    container_name: vulnerable_webapp
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web/html:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sqli_network
+    environment:
+      DB_HOST: db
+      DB_NAME: vulnerable_db
+      DB_USER: webapp
+      DB_PASS: webpass
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/index.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Adminer per gestire il database (alternativa leggera a phpMyAdmin)
+  adminer:
+    image: adminer:latest
+    container_name: adminer
+    ports:
+      - "8081:8080"
+    depends_on:
+      - db
+    networks:
+      - sqli_network
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DESIGN: nette
+
+networks:
+  sqli_network:
+    driver: bridge
+    name: sqli_network
+
+volumes:
+  db_data:
+    name: vulnerable_db_data
